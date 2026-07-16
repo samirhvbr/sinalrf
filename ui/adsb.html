@@ -95,11 +95,11 @@
         if(a.lat==null) return;
         vivos.add(a.icao); pts.push([a.lat,a.lon]);
         const rot=(a.trk||0)-45;
-        const html=`<div style="text-align:center"><div class="plane" style="transform:rotate(${rot}deg)">✈️</div><div class="lbl">${a.callsign||a.icao}</div></div>`;
+        const html=`<div style="text-align:center"><div class="plane" style="transform:rotate(${rot}deg)">✈️</div><div class="lbl">${esc(a.callsign||a.icao)}</div></div>`;
         const ic=L.divIcon({html, className:'', iconSize:[60,34], iconAnchor:[30,17]});
         if(markers[a.icao]){ markers[a.icao].setLatLng([a.lat,a.lon]).setIcon(ic); }
         else { markers[a.icao]=L.marker([a.lat,a.lon],{icon:ic}).addTo(map); }
-        markers[a.icao].bindTooltip(`${a.callsign||a.icao} · ${a.alt??'?'} ft · ${a.spd??'?'} kt`,{direction:'top'});
+        markers[a.icao].bindTooltip(`${esc(a.callsign||a.icao)} · ${a.alt??'?'} ft · ${a.spd??'?'} kt`,{direction:'top'});
       });
       Object.keys(markers).forEach(k=>{ if(!vivos.has(k)){ map.removeLayer(markers[k]); delete markers[k]; } });
       if(!fitDone && pts.length){ map.fitBounds(pts,{padding:[40,40],maxZoom:9}); fitDone=true; }
@@ -108,7 +108,7 @@
       $('nAv').textContent=`(${av.length})`;
       if(!av.length){ $('tab').innerHTML='<div class="empty">Nenhuma aeronave ainda — depende de antena 1090 MHz e tráfego no alcance.</div>'; return; }
       let h='<table><thead><tr><th>callsign</th><th>ICAO</th><th>alt (ft)</th><th>vel (kt)</th><th>rumo</th><th>posição</th><th>msgs</th></tr></thead><tbody>';
-      av.forEach(a=>{ h+=`<tr><td style="font-weight:700;color:var(--g)">${a.callsign||'—'}</td><td>${a.icao}</td>
+      av.forEach(a=>{ h+=`<tr><td style="font-weight:700;color:var(--g)">${esc(a.callsign||'—')}</td><td>${esc(a.icao)}</td>
         <td>${a.alt??'—'}</td><td>${a.spd!=null?Math.round(a.spd):'—'}</td><td>${a.trk!=null?Math.round(a.trk)+'°':'—'}</td>
         <td>${a.lat!=null?a.lat+', '+a.lon:'<span class="st">sem fix</span>'}</td><td>${a.msgs}</td></tr>`; });
       $('tab').innerHTML=h+'</tbody></table>';

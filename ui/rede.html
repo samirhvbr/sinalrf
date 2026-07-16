@@ -83,7 +83,7 @@
       try {
         const r = await fetch('/api/rede/info'); const d = await r.json();
         document.getElementById('netInfo').innerHTML =
-          `<div><b>${d.ssid || '(rede)'}</b> <span>SSID</span></div>` +
+          `<div><b>${esc(d.ssid || '(rede)')}</b> <span>SSID</span></div>` +
           `<div><b>${d.ip_local}</b> <span>seu IP</span></div>` +
           `<div><b>${d.subnet}</b> <span>sub-rede</span></div>`;
       } catch {}
@@ -117,13 +117,13 @@
       const conf = ['—','possível','provável','CÂMERA'][d.conf] || '—';
       const portas = (d.portas||[]).map(p =>
         `<span class="port${[554,8554,10554].includes(p)?' rtsp':''}">${p}</span>`).join('');
-      const link = d.url ? `<a class="open" href="${d.url}" target="_blank">abrir ▸</a>` : '';
+      const link = (d.url && /^https?:\/\//i.test(d.url)) ? `<a class="open" href="${esc(d.url)}" target="_blank">abrir ▸</a>` : '';
       return `<tr class="${d.camera?'cam':''}">
         <td><span class="badge c${d.conf}">${conf}</span></td>
-        <td class="ip">${d.ip}</td>
-        <td class="mac">${d.mac || '—'}</td>
-        <td>${d.vendor || '—'}</td>
-        <td>${d.hostname || '—'}</td>
+        <td class="ip">${esc(d.ip)}</td>
+        <td class="mac">${esc(d.mac || '—')}</td>
+        <td>${esc(d.vendor || '—')}</td>
+        <td>${esc(d.hostname || '—')}</td>
         <td>${portas || '—'}</td>
         <td>${d.motivo || ''} ${link}</td>
       </tr>`;

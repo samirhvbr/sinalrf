@@ -6,6 +6,27 @@
 
 ---
 
+## 2026-07-16 · Segurança: hardening de exposição, TX, pickle e XSS
+
+**Pedido (Samir):** revisão de segurança do projeto + aplicar os fixes de maior gravidade e abrir PR.
+
+**Contexto:** a API subia em `0.0.0.0` sem autenticação (81 endpoints, incluindo TX de RF, SMS e leitura das capturas do portal); TX aceitava frequência arbitrária; `burst`/`ISM` não limitavam `sr`/`dur` (DoS por arquivo/RAM); `sentinela` fazia `np.load(allow_pickle=True)` (RCE via pickle); o loop de broadcast iterava sobre um set vivo (crash `Set changed size`); e o frontend jogava dados de terceiros (SSID, hostname, callsign, campos do portal) em `innerHTML` cru (XSS).
+
+**Implementação:**
+- `server.py`: bind em `127.0.0.1` por padrão (env `MTZRF_HOST`, com aviso ao expor); middleware anti-CSRF que bloqueia POST/PUT/DELETE de origem cruzada (same-origin e clientes sem Origin passam); validação de faixa de `freq` (1–6000 MHz), `sr` e `dur` em TX/burst/ISM/emergência; `list(clientes)` nos 3 loops de broadcast.
+- `sentinela.py`: `allow_pickle=False` (o dado salvo é só array+string).
+- Frontend: `esc()` compartilhado em `ui/nav.js`, aplicado aos sinks de dado de terceiro em `wifi.html` (SSID + capturas), `rede.html` (hostname/vendor/mac/ssid + validação de esquema no link) e `adsb.html` (callsign/icao).
+
+**Arquivos:** `server.py`, `sentinela.py`, `ui/nav.js`, `ui/wifi.html`, `ui/rede.html`, `ui/adsb.html`.
+
+**Verificação:** `py_compile` + `node --check` OK; lógica do middleware CSRF testada (libera same-origin/localhost, bloqueia origem cruzada). Sem hardware (HackRF está no Mac) — teste em runtime pendente.
+
+**Pendências (follow-up):**
+- `hackrf_resource`: lock sem noção de dono (`release()`/`zerar()` liberam de qualquer chamador) → refatorar com ownership + atualizar call-sites (exige teste no HackRF).
+- Autenticação por token para exposição em LAN (hoje o hardening é bind-local + anti-CSRF).
+- `esc()` no restante das ~20 telas (padrão já pronto no `nav.js`).
+- Rate-limit em `/api/emergencia/sms`; máscara de IMSI/TMSI nos logs (LGPD); decompor o God module `server.py` (2338 linhas).
+
 ## 2026-06-26 · Fix TTS cross-platform + firmware do HackRF
 
 **TTS de emergência multiplataforma:** `_tts_para_wav` usava `say`/`afconvert` (só macOS)

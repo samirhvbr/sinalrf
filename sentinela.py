@@ -63,7 +63,7 @@ def listar() -> list:
         if not f.endswith(".npz"):
             continue
         try:
-            d = np.load(os.path.join(_DIR, f), allow_pickle=True)
+            d = np.load(os.path.join(_DIR, f), allow_pickle=False)
             out.append({
                 "local": str(d["local"]),
                 "ts": str(d["ts"]),
@@ -82,7 +82,7 @@ def _carregar(nome: str):
     if not os.path.exists(p):
         return None
     try:
-        d = np.load(p, allow_pickle=True)
+        d = np.load(p, allow_pickle=False)
         return {"freqs": d["freqs_hz"], "base": d["base_dbm"],
                 "local": str(d["local"]), "ts": str(d["ts"]), "n_sweeps": int(d["n_sweeps"])}
     except (OSError, KeyError, ValueError):

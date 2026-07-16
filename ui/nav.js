@@ -218,6 +218,14 @@
     });
   }
 
+  // Escapa dados de terceiros (SSID, hostname, callsign, campos do portal…) antes
+  // de inserir em innerHTML — evita XSS a partir de nomes controlados por RF/rede.
+  window.esc = function (s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  };
+
   window.srfNav = {
     setWs(on) {
       const dot = document.getElementById('srfWsDot'), lbl = document.getElementById('srfWsLbl');

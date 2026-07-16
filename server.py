@@ -37,7 +37,7 @@ except ImportError:
 import numpy as np
 from scipy import signal as sp_signal
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Request, Body
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
@@ -610,7 +610,7 @@ async def _loop_broadcast():
         if clientes:
             msg   = json.dumps(proc.frame(), ensure_ascii=False)
             mortos: set[WebSocket] = set()
-            for ws in clientes:
+            for ws in list(clientes):
                 try:
                     await ws.send_text(msg)
                 except Exception:
@@ -626,7 +626,7 @@ async def _loop_intel_broadcast():
         if clientes_intel:
             msg   = json.dumps(sensor_intel.inteligencia(), ensure_ascii=False)
             mortos: set[WebSocket] = set()
-            for ws in clientes_intel:
+            for ws in list(clientes_intel):
                 try:
                     await ws.send_text(msg)
                 except Exception:
@@ -642,7 +642,7 @@ async def _loop_imsi_broadcast():
         if clientes_imsi:
             msg   = json.dumps(sensor_imsi.estado(), ensure_ascii=False)
             mortos: set[WebSocket] = set()
-            for ws in clientes_imsi:
+            for ws in list(clientes_imsi):
                 try:
                     await ws.send_text(msg)
                 except Exception:
@@ -676,6 +676,43 @@ async def lifespan(_app: FastAPI):
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 app = FastAPI(title="RadarWifi", lifespan=lifespan)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Segurança — limites de faixa e proteção de origem (CSRF)
+# ─────────────────────────────────────────────────────────────────────────────
+# Faixa física do HackRF One (MHz) e limites de captura. Barram TX fora de faixa
+# e DoS por parâmetro sem limite (arquivo temporário / RAM gigantes em burst/ISM).
+FREQ_MIN_MHZ, FREQ_MAX_MHZ = 1.0, 6000.0
+SR_MIN, SR_MAX             = 1_000_000, 20_000_000
+DUR_MAX_S                  = 30.0
+
+
+def _origem_permitida(origem: str, host_req: str = "") -> bool:
+    """True se a Origin/Referer é same-origin (localhost ou o mesmo host da
+    requisição). Cliente não-browser (sem Origin, ex.: curl) é permitido — a
+    proteção é contra sites de terceiros que o operador visite dispararem ações
+    via fetch, já que a API não tem autenticação."""
+    if not origem:
+        return True
+    from urllib.parse import urlparse
+    try:
+        h = (urlparse(origem).hostname or "").lower()
+    except ValueError:
+        return False
+    if h in ("localhost", "127.0.0.1", "::1"):
+        return True
+    return bool(host_req) and h == host_req.split(":")[0].lower()
+
+
+@app.middleware("http")
+async def _protege_csrf(request: Request, call_next):
+    """Bloqueia requisições que mudam estado (POST/PUT/DELETE/PATCH) vindas de
+    origem cruzada — a API comanda TX de RF, SMS e HackRF sem autenticação."""
+    if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+        origem = request.headers.get("origin") or request.headers.get("referer") or ""
+        if origem and not _origem_permitida(origem, request.headers.get("host", "")):
+            return JSONResponse({"erro": "origem não permitida (proteção CSRF)"}, status_code=403)
+    return await call_next(request)
 
 
 @app.websocket("/ws")
@@ -1336,8 +1373,12 @@ async def burst_cacar(body: dict):
     sr   = int(body.get("sr", 8_000_000))
     dur  = float(body.get("dur", 2.0))
     amp  = bool(body.get("amp", False))
-    if freq <= 0:
-        return {"ok": False, "motivo": "frequência inválida"}
+    if not (FREQ_MIN_MHZ <= freq <= FREQ_MAX_MHZ):
+        return {"ok": False, "motivo": "frequência fora da faixa do HackRF (1–6000 MHz)"}
+    if not (SR_MIN <= sr <= SR_MAX):
+        return {"ok": False, "motivo": "sample rate fora da faixa (1–20 MHz)"}
+    if not (0 < dur <= DUR_MAX_S):
+        return {"ok": False, "motivo": f"duração fora da faixa (0–{DUR_MAX_S:g}s)"}
     sensor_hackrf.pausar(); sensor_espectro.pausar(); sensor_intel.pausar()
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, lambda: burst_hunter.cacar(freq, sr, dur, 32, 40, amp))
@@ -1368,6 +1409,10 @@ async def ism_scan(body: dict):
     freq = float(body.get("freq", 433.92))
     dur  = float(body.get("dur", 3.0))
     amp  = bool(body.get("amp", True))
+    if not (FREQ_MIN_MHZ <= freq <= FREQ_MAX_MHZ):
+        return {"ok": False, "motivo": "frequência fora da faixa do HackRF (1–6000 MHz)"}
+    if not (0 < dur <= DUR_MAX_S):
+        return {"ok": False, "motivo": f"duração fora da faixa (0–{DUR_MAX_S:g}s)"}
     sensor_hackrf.pausar(); sensor_espectro.pausar(); sensor_intel.pausar()
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, lambda: ism_decoder.escanear(freq, dur, 32, 40, amp))
@@ -1467,7 +1512,7 @@ async def deletar_sinal(nome: str):
 
 @app.post("/api/hackrf/transmitir/iniciar")
 async def tx_iniciar(
-    freq:     float = Query(98.1, description="Frequência em MHz"),
+    freq:     float = Query(98.1, ge=1, le=6000, description="Frequência em MHz (faixa do HackRF)"),
     arquivo:  str   = Query(..., description="Nome do arquivo .bin em sinais/"),
     potencia: int   = Query(40, ge=0, le=47, description="TX VGA gain 0-47 dB"),
 ):
@@ -1898,6 +1943,8 @@ async def emergencia_transmitir(body: dict):
     freqs_mhz = body.get("freqs_mhz", [])
     if not freqs_mhz:
         raise HTTPException(400, "Liste ao menos uma frequência")
+    if not all(isinstance(f, (int, float)) and FREQ_MIN_MHZ <= f <= FREQ_MAX_MHZ for f in freqs_mhz):
+        raise HTTPException(400, "Frequência fora da faixa do HackRF (1–6000 MHz)")
 
     ganho     = max(20, min(47, int(body.get("ganho", 47))))
     freqs_hz  = [int(f * 1e6) for f in freqs_mhz]
@@ -2205,6 +2252,8 @@ async def emergencia_disparar(body: dict):
     repeticoes = max(1, min(6, int(body.get("repeticoes", 2))))
     ganho      = max(20, min(47, int(body.get("ganho", 47))))
     freqs_mhz  = body.get("freqs_mhz") or [round(88.0 + i * 0.2, 1) for i in range(101)]
+    if not all(isinstance(f, (int, float)) and FREQ_MIN_MHZ <= f <= FREQ_MAX_MHZ for f in freqs_mhz):
+        raise HTTPException(400, "Frequência fora da faixa do HackRF (1–6000 MHz)")
     center_mhz = 98.0
     sr_iq      = 20_000_000
 
@@ -2334,4 +2383,8 @@ if __name__ == "__main__":
     print(f"  🌐  http://localhost:{PORTA}")
     print(f"  ℹ️   HackRF: scan 2.4GHz + doppler + espectro 88-900MHz")
     print()
-    uvicorn.run(app, host="0.0.0.0", port=PORTA, log_level="warning")
+    host = os.getenv("MTZRF_HOST", "127.0.0.1")
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        print(f"  ⚠️   bind em {host} (fora de localhost) — a API NÃO tem autenticação;")
+        print(f"       exponha só em rede confiável, atrás de VPN/firewall (env MTZRF_HOST).")
+    uvicorn.run(app, host=host, port=PORTA, log_level="warning")

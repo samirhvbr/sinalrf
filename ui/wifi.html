@@ -157,19 +157,19 @@
     }
     function renderRogue(al){
       document.getElementById('rogue').innerHTML = al.map(a=>
-        `<div class="alert">⚠ <b>${a.ssid}</b> — ${a.motivo}</div>`).join('');
+        `<div class="alert">⚠ <b>${esc(a.ssid)}</b> — ${esc(a.motivo)}</div>`).join('');
     }
     function renderRedes(r){
       if(!r.length){document.getElementById('redes').innerHTML='<div class="empty">Nenhum AP visível.</div>';return;}
       let h='<table><thead><tr><th>SSID</th><th>BSSID</th><th>sinal</th><th>canal</th><th>segurança</th><th>rádio</th></tr></thead><tbody>';
       r.forEach(x=>{
         const w=Math.max(4,(x.sinal||0)*0.5);
-        h+=`<tr class="${x.rogue?'rogue':''}"><td><b>${x.ssid}</b>${x.rogue?' ⚠':''}</td>
-          <td>${x.bssid}</td>
+        h+=`<tr class="${x.rogue?'rogue':''}"><td><b>${esc(x.ssid)}</b>${x.rogue?' ⚠':''}</td>
+          <td>${esc(x.bssid)}</td>
           <td><span class="bar" style="width:${w}px"></span> ${x.sinal??'—'}%</td>
-          <td>${x.canal||'—'}</td>
-          <td><span class="badge seg-${x.seg}">${x.seg}</span></td>
-          <td>${x.radio||'—'}</td></tr>`;
+          <td>${esc(x.canal||'—')}</td>
+          <td><span class="badge seg-${esc(x.seg)}">${esc(x.seg)}</span></td>
+          <td>${esc(x.radio||'—')}</td></tr>`;
       });
       document.getElementById('redes').innerHTML=h+'</tbody></table>';
     }
@@ -208,8 +208,8 @@
       document.getElementById('nCap').textContent=`(${c.length})`;
       if(!c.length){document.getElementById('capturas').innerHTML='<div class="empty">Sem capturas.</div>';return;}
       let h='<table><thead><tr><th>quando</th><th>campanha</th><th>portal</th><th>IP</th><th>campos</th></tr></thead><tbody>';
-      c.forEach(x=>{ h+=`<tr><td>${x.ts}</td><td>${x.campanha}</td><td>${x.portal}</td><td>${x.ip||'—'}</td>
-        <td>${Object.entries(x.campos||{}).map(([k,v])=>`${k}=<b>${v}</b>`).join(' · ')}</td></tr>`; });
+      c.forEach(x=>{ h+=`<tr><td>${esc(x.ts)}</td><td>${esc(x.campanha)}</td><td>${esc(x.portal)}</td><td>${esc(x.ip||'—')}</td>
+        <td>${Object.entries(x.campos||{}).map(([k,v])=>`${esc(k)}=<b>${esc(v)}</b>`).join(' · ')}</td></tr>`; });
       document.getElementById('capturas').innerHTML=h+'</tbody></table>';
     }
     async function limparCapturas(){ await fetch('/api/wifi/capturas',{method:'DELETE'}); verCapturas(); }
